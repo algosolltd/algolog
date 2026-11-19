@@ -75,6 +75,29 @@ stdout either.
 Node/Python helpers accept a plain object. An empty `msg` falls back to the
 event code, because the server requires 1..2000 characters.
 
+## Redaction
+
+All three clients make a **best-effort** pass over `msg` and over every string
+leaf of `data` before the 2000-character / 4096-byte caps are applied. A
+redacted value never matches again, so running the pass twice is idempotent.
+
+Covered (case-insensitive where it matters):
+
+- `Authorization: Bearer <token>` → `Authorization: Bearer [redacted]`
+- `password=`, `passwd=`, `pwd=`, `secret=`, `token=`, `api_key=`, `apikey=`,
+  `authorization:` → key and separator kept, value replaced with `[redacted]`
+- credentials in URLs: `scheme://user:password@host` →
+  `scheme://[redacted]@host`, including `postgres://`, `postgresql://`,
+  `mysql://`, `mongodb://` and `redis://`
+
+Traversal stops at depth 8 and at the first 100 array items, so pathological
+payloads cannot make logging expensive.
+
+**This is not a guarantee.** It cannot recognize a secret that does not look
+like one (a bare token, a custom header, a secret split across fields, an
+encrypted or encoded blob). Never log secrets on purpose: the only reliable
+protection is not to pass them to the logger.
+
 ## Rust
 
 `rust/` — crate `algolog`, edition 2021. Dependencies: `serde`, `serde_json`,

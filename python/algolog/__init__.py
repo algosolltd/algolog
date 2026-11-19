@@ -19,6 +19,7 @@ import atexit
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -28,7 +29,7 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Deque, Dict, List, Optional
 
-__all__ = ["setup", "Logger", "LoggingHandler", "attach_logging", "LEVELS"]
+__all__ = ["setup", "Logger", "LoggingHandler", "attach_logging", "LEVELS", "_redact"]
 
 CAPACITY = 5000
 BATCH_THRESHOLD = 100
@@ -63,6 +64,49 @@ def _parse_level(value: Any, fallback: str = "info") -> str:
 def _truncate(value: Any, limit: int) -> str:
     text = "" if value is None else str(value)
     return text if len(text) <= limit else text[:limit]
+
+
+REDACTED = "[redacted]"
+_MAX_REDACT_DEPTH = 8
+_MAX_REDACT_ARRAY = 100
+
+_BEARER_RE = re.compile(r"\b(Bearer[ \t]+)[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
+_SECRET_KEY_RE = re.compile(
+    r"(^|[^A-Za-z0-9_])"
+    r"(password|passwd|pwd|secret|token|api_key|apikey|authorization)"
+    r"([ \t]*[=:][ \t]*)"
+    r"(?!bearer(?![A-Za-z0-9._~+/=-]))"
+    r"[^\s,;&\"'<>()\[\]{}]+",
+    re.IGNORECASE,
+)
+_URL_CRED_RE = re.compile(
+    r"([A-Za-z][A-Za-z0-9+.\-]*://)([^/\s?#@]*):([^@\s/?#]+)@"
+)
+
+
+def _redact(value: Any) -> str:
+    """Best-effort secret redaction. Idempotent on its own output."""
+    text = "" if value is None else str(value)
+    text = _BEARER_RE.sub(lambda match: match.group(1) + REDACTED, text)
+    text = _SECRET_KEY_RE.sub(
+        lambda match: match.group(1) + match.group(2) + match.group(3) + REDACTED,
+        text,
+    )
+    text = _URL_CRED_RE.sub(lambda match: match.group(1) + REDACTED + "@", text)
+    return text
+
+
+def _redact_data(value: Any, depth: int = 0) -> Any:
+    if isinstance(value, str):
+        return _redact(value)
+    if depth >= _MAX_REDACT_DEPTH or not isinstance(value, (dict, list, tuple)):
+        return value
+    if isinstance(value, dict):
+        return {key: _redact_data(item, depth + 1) for key, item in value.items()}
+    return [
+        _redact_data(item, depth + 1) if index < _MAX_REDACT_ARRAY else item
+        for index, item in enumerate(value)
+    ]
 
 
 def _normalize_data(data: Any) -> Optional[Dict[str, Any]]:
@@ -100,7 +144,7 @@ def _build_event(
     code = "" if event is None else str(event)
     if not code.strip():
         code = "log"
-    message = _truncate(msg, MAX_MSG_CHARS)
+    message = _truncate(_redact(msg), MAX_MSG_CHARS)
     if not message.strip():
         message = code
     payload: Dict[str, Any] = {
@@ -113,7 +157,7 @@ def _build_event(
         payload["project"] = str(project)
     payload["platform"] = str(platform)
     payload["source"] = str(source)
-    normalized = _normalize_data(data)
+    normalized = _normalize_data(_redact_data(data))
     if normalized is not None:
         payload["data"] = normalized
     if dedupe_key:

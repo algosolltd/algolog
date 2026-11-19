@@ -36,6 +36,52 @@ function truncateChars(value, max) {
   return [...text].slice(0, max).join('');
 }
 
+export const REDACTED = '[redacted]';
+const MAX_REDACT_DEPTH = 8;
+const MAX_REDACT_ARRAY = 100;
+
+const TOKEN_CHARS = '[A-Za-z0-9._~+/=-]';
+const VALUE_CHARS = '[^\\s,;&"\'<>()\\[\\]{}]+';
+const BEARER_RE = new RegExp(`\\b(Bearer[ \\t]+)${TOKEN_CHARS}+`, 'gi');
+const SECRET_KEY_RE = new RegExp(
+  `(^|[^A-Za-z0-9_])` +
+    `(password|passwd|pwd|secret|token|api_key|apikey|authorization)` +
+    `([ \\t]*[=:][ \\t]*)` +
+    `(?!bearer(?![A-Za-z0-9._~+/=-]))` +
+    VALUE_CHARS,
+  'gi',
+);
+const URL_CRED_RE = /([A-Za-z][A-Za-z0-9+.-]*:\/\/)([^/\s?#@]*):([^@\s/?#]+)@/g;
+
+// Best-effort secret redaction. Idempotent: the replacement `[redacted]` does
+// not match any of the value character classes above.
+export function redact(value) {
+  let text = String(value ?? '');
+  text = text.replace(BEARER_RE, `$1${REDACTED}`);
+  text = text.replace(
+    SECRET_KEY_RE,
+    (_match, before, key, separator) => before + key + separator + REDACTED,
+  );
+  text = text.replace(URL_CRED_RE, `$1${REDACTED}@`);
+  return text;
+}
+
+function redactData(value, depth = 0) {
+  if (typeof value === 'string') return redact(value);
+  if (value === null || typeof value !== 'object') return value;
+  if (depth >= MAX_REDACT_DEPTH) return value;
+  if (Array.isArray(value)) {
+    return value.map((item, index) =>
+      index < MAX_REDACT_ARRAY ? redactData(item, depth + 1) : item,
+    );
+  }
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    out[key] = redactData(item, depth + 1);
+  }
+  return out;
+}
+
 function normalizeData(data) {
   if (data === undefined || data === null) return undefined;
   let json;
@@ -112,7 +158,7 @@ export function createLogger(options = {}) {
 
   function buildEvent(levelName, event, msg, data, extra = {}) {
     const at = extra.now instanceof Date ? extra.now : new Date();
-    let message = truncateChars(msg, MAX_MSG_CHARS);
+    let message = truncateChars(redact(msg), MAX_MSG_CHARS);
     let code = event === undefined || event === null ? 'log' : String(event);
     if (!code.trim()) code = 'log';
     if (!message.trim()) message = code;
@@ -125,7 +171,7 @@ export function createLogger(options = {}) {
     if (project) ev.project = String(project);
     ev.platform = String(platform);
     ev.source = String(source);
-    const normalized = normalizeData(data);
+    const normalized = normalizeData(redactData(data));
     if (normalized !== undefined) ev.data = normalized;
     if (extra.traceId) ev.trace_id = truncateChars(extra.traceId, MAX_TRACE_CHARS);
     if (extra.actor) ev.actor = truncateChars(extra.actor, MAX_ACTOR_CHARS);

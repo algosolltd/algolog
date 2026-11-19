@@ -4,6 +4,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::config::Level;
+use crate::redact::{redact, redact_value};
 
 pub const MAX_MSG_CHARS: usize = 2000;
 pub const MAX_DATA_BYTES: usize = 4096;
@@ -66,7 +67,7 @@ impl Event {
         platform: &str,
         source: &str,
     ) -> Event {
-        let mut msg = truncate_chars(msg, MAX_MSG_CHARS);
+        let mut msg = truncate_chars(&redact(msg), MAX_MSG_CHARS);
         if msg.trim().is_empty() {
             // The server rejects an empty message (1..2000). Use the event code
             // rather than inventing prose.
@@ -88,7 +89,7 @@ impl Event {
             project: project.map(|p| p.to_string()),
             platform: platform.to_string(),
             source: source.to_string(),
-            data: normalize_data(data),
+            data: normalize_data(redact_value(data, 0)),
             trace_id: None,
             actor: None,
             dedupe_key: None,

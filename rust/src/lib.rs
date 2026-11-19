@@ -25,6 +25,7 @@ mod client;
 mod config;
 mod event;
 mod queue;
+mod redact;
 
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -33,6 +34,7 @@ use serde_json::Value;
 pub use client::Client;
 pub use config::{Config, Level};
 pub use event::Event;
+pub use redact::redact;
 
 use client::write_line;
 

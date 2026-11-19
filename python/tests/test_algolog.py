@@ -203,6 +203,52 @@ class NormalizationTests(unittest.TestCase):
             self.assertRegex(event["dedupe_key"], r"^hb:algolog:laptop:test:\d+$")
 
 
+class RedactionTests(unittest.TestCase):
+    def test_redacts_bearer_key_values_and_url_credentials(self):
+        self.assertEqual(
+            algolog._redact("Authorization: Bearer abcdef"),
+            "Authorization: Bearer [redacted]",
+        )
+        self.assertEqual(algolog._redact("password=hunter2"), "password=[redacted]")
+        self.assertEqual(algolog._redact("api_key=xyz"), "api_key=[redacted]")
+        self.assertEqual(
+            algolog._redact("postgres://user:pass@host:5432/db"),
+            "postgres://[redacted]@host:5432/db",
+        )
+        self.assertEqual(
+            algolog._redact("nothing to see here"), "nothing to see here"
+        )
+
+    def test_redaction_is_idempotent(self):
+        for text in (
+            "Authorization: Bearer abcdef",
+            "password=hunter2 api_key=xyz",
+            "redis://:s3cret@cache:6379/0",
+        ):
+            once = algolog._redact(text)
+            self.assertEqual(algolog._redact(once), once)
+
+    def test_msg_and_nested_data_strings_are_redacted(self):
+        with StdoutCapture() as out:
+            logger = algolog.Logger(project="algolog", url="", token="")
+            logger.info(
+                "db.connect",
+                "postgres://user:pass@host:5432/db",
+                {
+                    "dsn": "postgres://u:p@h/db",
+                    "nested": {"headers": ["Bearer abcdef", 1]},
+                },
+            )
+            logger.shutdown()
+            (event,) = out.events()
+            self.assertEqual(event["msg"], "postgres://[redacted]@host:5432/db")
+            self.assertEqual(event["data"]["dsn"], "postgres://[redacted]@h/db")
+            self.assertEqual(
+                event["data"]["nested"]["headers"][0], "Bearer [redacted]"
+            )
+            self.assertEqual(event["data"]["nested"]["headers"][1], 1)
+
+
 class LoggingIntegrationTests(unittest.TestCase):
     def test_attach_logging_forwards_warnings_to_the_server(self):
         with local_server() as (url, capture):

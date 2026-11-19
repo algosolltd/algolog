@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
 
-import { createLogger, CAPACITY, MAX_MSG_CHARS } from '../index.mjs';
+import { createLogger, redact, CAPACITY, MAX_MSG_CHARS } from '../index.mjs';
 
 function capture() {
   const lines = [];
@@ -256,6 +256,46 @@ test('missing url or token means no transport, stdout still works', async () => 
     assert.equal(events.length, 1);
     assert.equal(events[0].event, 'no.transport');
     assert.equal(logger.stats().sent, 0);
+  } finally {
+    await logger.shutdown();
+  }
+});
+
+test('redact covers bearer, key=value, URL credentials and leaves benign text', () => {
+  assert.equal(redact('Authorization: Bearer abcdef'), 'Authorization: Bearer [redacted]');
+  assert.equal(redact('password=hunter2'), 'password=[redacted]');
+  assert.equal(redact('api_key=xyz'), 'api_key=[redacted]');
+  assert.equal(
+    redact('postgres://user:pass@host:5432/db'),
+    'postgres://[redacted]@host:5432/db',
+  );
+  assert.equal(redact('nothing to see here'), 'nothing to see here');
+});
+
+test('redaction is idempotent', () => {
+  for (const text of [
+    'Authorization: Bearer abcdef',
+    'password=hunter2 api_key=xyz',
+    'redis://:s3cret@cache:6379/0',
+  ]) {
+    const once = redact(text);
+    assert.equal(redact(once), once);
+  }
+});
+
+test('msg and nested data strings are redacted before the size cap', async () => {
+  const out = capture();
+  const logger = createLogger({ token: '', project: 'algolog', write: out.write });
+  try {
+    logger.info('db.connect', 'postgres://user:pass@host:5432/db', {
+      dsn: 'postgres://u:p@h/db',
+      nested: { headers: ['Bearer abcdef', 1] },
+    });
+    const [event] = out.events();
+    assert.equal(event.msg, 'postgres://[redacted]@host:5432/db');
+    assert.equal(event.data.dsn, 'postgres://[redacted]@h/db');
+    assert.equal(event.data.nested.headers[0], 'Bearer [redacted]');
+    assert.equal(event.data.nested.headers[1], 1);
   } finally {
     await logger.shutdown();
   }
