@@ -1,0 +1,30 @@
+{
+  "name": "algolog",
+  "version": "0.1.0",
+  "description": "Shared application log client for algosolltd apps (Node ESM entry)",
+  "type": "module",
+  "main": "node/index.mjs",
+  "types": "node/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./node/index.d.ts",
+      "default": "./node/index.mjs"
+    }
+  },
+  "files": [
+    "node/index.mjs",
+    "node/index.d.ts"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "logging",
+    "algostatus"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/algosolltd/algolog"
+  }
+}
