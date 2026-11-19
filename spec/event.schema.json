@@ -118,10 +118,10 @@
       "event": "heartbeat",
       "msg": "heartbeat",
       "project": "hft_kraken",
-      "platform": "kraken-1",
+      "platform": "hft_kraken",
       "source": "app",
       "data": { "heartbeat_s": 60, "dropped": 0, "queued": 0 },
-      "dedupe_key": "hb:hft_kraken:kraken-1:app:29678021"
+      "dedupe_key": "hb:hft_kraken:hft_kraken:app:29678021"
     }
   ]
 }

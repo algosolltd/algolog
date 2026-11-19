@@ -38,7 +38,7 @@ All three clients read the same variables.
 | `ALGOSTATUS_LOG_URL` | for sending | — | Base URL of algostatus, no trailing slash needed |
 | `ALGOSTATUS_LOG_TOKEN` | for sending | — | Write token, sent as `Authorization: Bearer …` |
 | `ALGOSTATUS_PROJECT` | optional | — | Repo name; omit when the token is bound to a project |
-| `ALGOSTATUS_PLATFORM` | no | `unknown` | Where it runs: `railway`, `kraken-1`, `laptop` |
+| `ALGOSTATUS_PLATFORM` | no | `unknown` | Where it runs: `railway`, `hft_kraken`, `laptop` |
 | `ALGOSTATUS_SOURCE` | no | `app` | Internal part: `http`, `worker`, `strategy`, `deploy` |
 | `ALGOSTATUS_LOG_LEVEL` | no | `info` | Minimum level: `debug`, `info`, `warn`, `error`, `fatal` |
 | `ALGOSTATUS_LOG_DISABLED` | no | — | `1` disables the client completely |
@@ -49,7 +49,7 @@ stdout either.
 ## Behaviour (identical in all three clients)
 
 1. Every emitted event is one JSON line on stdout, byte-for-byte the shape sent
-   to the server, so `docker logs` and Railway keep working.
+   to the server, so `docker logs` and Railway keep working. When the token is bound to a platform, the server stores that platform even if the local line says `unknown`.
 2. Bounded queue of 5000 events; when full the oldest is dropped and counted.
    Enqueue is O(1).
 3. Batch flush when 100 events are queued or after 1 s, whichever comes first.
