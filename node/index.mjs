@@ -112,7 +112,7 @@ export function createLogger(options = {}) {
 
   function buildEvent(levelName, event, msg, data, extra = {}) {
     const at = extra.now instanceof Date ? extra.now : new Date();
-    const message = truncateChars(msg, MAX_MSG_CHARS);
+    let message = truncateChars(msg, MAX_MSG_CHARS);
     let code = event === undefined || event === null ? 'log' : String(event);
     if (!code.trim()) code = 'log';
     if (!message.trim()) message = code;

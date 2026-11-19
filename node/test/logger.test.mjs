@@ -40,6 +40,15 @@ function readBody(req) {
   });
 }
 
+test('an empty msg falls back to the event code instead of throwing', () => {
+  const out = capture();
+  const logger = createLogger({ url: '', token: '', write: out.write });
+  logger.info('task.done', '');
+  const [event] = out.events();
+  assert.equal(event.event, 'task.done');
+  assert.equal(event.msg, 'task.done');
+});
+
 test('sends one batch with bearer auth and the documented shape', async () => {
   const seen = [];
   await withServer(
