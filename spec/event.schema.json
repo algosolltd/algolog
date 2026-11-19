@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/algosolltd/algolog/spec/event.schema.json",
+  "title": "Algotion application log event",
+  "description": "One event as written on stdout and accepted by POST {ALGOSTATUS_LOG_URL}/api/log/ingest. The server rejects ai_* projects by credential. The client libs always send the same shape on stdout and in the batch.",
+  "type": "object",
+  "required": ["ts", "level", "event", "msg", "platform", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp, milliseconds recommended. The server clamps values outside +/-24h instead of rejecting them."
+    },
+    "level": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error", "fatal"],
+      "description": "Severity. The server also accepts the aliases 'warning' and 'critical'; the clients emit the canonical spelling."
+    },
+    "event": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_.-]*$",
+      "description": "Low-cardinality dotted code, e.g. app.start, db.error, heartbeat. Defaults to 'log' when absent."
+    },
+    "msg": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "description": "Human-readable message, 1..2000 characters. Truncated by the clients; an empty message falls back to the event code."
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^(?!ai_)[a-z0-9][a-z0-9._-]*$",
+      "description": "Repo name in the algosolltd org. Optional here because a token bound to a project (LOG_PER_PROJECT_TOKENS) decides it; ai_* is rejected by credential and by allowlist."
+    },
+    "platform": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where the process runs: railway, kraken-1, laptop. Client default: unknown."
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Internal part that emitted the event: http, worker, strategy, deploy. Client default: app."
+    },
+    "data": {
+      "type": "object",
+      "description": "Structured payload, max 4096 serialized bytes. The clients replace anything larger with {\"truncated\":true}. For a heartbeat it carries heartbeat_s, dropped and queued.",
+      "additionalProperties": true
+    },
+    "trace_id": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Correlation id, truncated to 120 characters by the clients."
+    },
+    "actor": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Agent or person, truncated to 80 characters by the clients."
+    },
+    "dedupe_key": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Optional idempotency key. The clients use hb:<project>:<platform>:<source>:<epoch minute> for heartbeats and omit it otherwise."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "event": { "const": "heartbeat" } },
+        "required": ["event"]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["heartbeat_s"],
+            "properties": {
+              "heartbeat_s": {
+                "type": "integer",
+                "minimum": 10,
+                "maximum": 3600,
+                "description": "Declared interval. The clients send 60."
+              },
+              "dropped": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Events dropped by the bounded queue since start."
+              },
+              "queued": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Queue depth at heartbeat time."
+              }
+            }
+          }
+        },
+        "description": "A heartbeat updates ops_source.last_seen and is not stored as a log row."
+      }
+    }
+  ],
+  "examples": [
+    {
+      "ts": "2026-11-19T12:00:00.123Z",
+      "level": "error",
+      "event": "http.500",
+      "msg": "POST /api/orders failed",
+      "project": "algocrm",
+      "platform": "railway",
+      "source": "http",
+      "trace_id": "b3f1c0de",
+      "data": { "status": 500, "route": "/api/orders" }
+    },
+    {
+      "ts": "2026-11-19T12:01:00.000Z",
+      "level": "info",
+      "event": "heartbeat",
+      "msg": "heartbeat",
+      "project": "hft_kraken",
+      "platform": "kraken-1",
+      "source": "app",
+      "data": { "heartbeat_s": 60, "dropped": 0, "queued": 0 },
+      "dedupe_key": "hb:hft_kraken:kraken-1:app:29678021"
+    }
+  ]
+}

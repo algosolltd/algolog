@@ -1,0 +1,28 @@
+{
+  "name": "algolog",
+  "version": "0.1.0",
+  "description": "Shared application log client for algosolltd apps",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "files": [
+    "index.mjs"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "logging",
+    "algostatus"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/algosolltd/algolog"
+  }
+}
