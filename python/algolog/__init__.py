@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import logging
 import os
 import sys
 import threading
@@ -27,7 +28,7 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Deque, Dict, List, Optional
 
-__all__ = ["setup", "Logger", "LEVELS"]
+__all__ = ["setup", "Logger", "LoggingHandler", "attach_logging", "LEVELS"]
 
 CAPACITY = 5000
 BATCH_THRESHOLD = 100
@@ -416,6 +417,61 @@ class Logger:
             return ("retry", status)
         except Exception:
             return ("retry", None)
+
+
+class LoggingHandler(logging.Handler):
+    """Forward stdlib ``logging`` records to algolog without touching call sites.
+
+    The default threshold is ``WARNING``: info/debug keep going to stdout only.
+    A record that carries ``exc_info`` adds the formatted traceback to ``data``.
+    """
+
+    def __init__(self, logger: Logger, level: int = logging.WARNING) -> None:
+        super().__init__(level)
+        self.logger = logger
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            if record.levelno >= logging.CRITICAL:
+                level = "fatal"
+            elif record.levelno >= logging.ERROR:
+                level = "error"
+            elif record.levelno >= logging.WARNING:
+                level = "warn"
+            elif record.levelno >= logging.INFO:
+                level = "info"
+            else:
+                level = "debug"
+            data: Dict[str, Any] = {
+                "logger": record.name,
+                "module": record.module,
+                "line": record.lineno,
+            }
+            if record.exc_info:
+                data["exception"] = self.formatException(record.exc_info)[:2000]
+            getattr(self.logger, level)("log." + level, record.getMessage(), data)
+        except Exception:  # pragma: no cover - logging must never raise
+            self.handleError(record)
+
+
+def attach_logging(
+    logger: Logger,
+    level: int = logging.WARNING,
+    name: Optional[str] = None,
+) -> LoggingHandler:
+    """Attach a forwarding handler to the root logger (or ``name``).
+
+    Idempotent: a second call updates the level instead of stacking handlers.
+    """
+    target = logging.getLogger(name)
+    existing = getattr(target, "_algolog_handler", None)
+    if isinstance(existing, LoggingHandler):
+        existing.setLevel(level)
+        return existing
+    handler = LoggingHandler(logger, level)
+    target.addHandler(handler)
+    setattr(target, "_algolog_handler", handler)
+    return handler
 
 
 def setup(

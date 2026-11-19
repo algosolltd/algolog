@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import sys
 import threading
 import time
@@ -200,6 +201,32 @@ class NormalizationTests(unittest.TestCase):
             self.assertEqual(event["data"]["dropped"], 0)
             self.assertIn("queued", event["data"])
             self.assertRegex(event["dedupe_key"], r"^hb:algolog:laptop:test:\d+$")
+
+
+class LoggingIntegrationTests(unittest.TestCase):
+    def test_attach_logging_forwards_warnings_to_the_server(self):
+        with local_server() as (url, capture):
+            logger = algolog.setup(
+                project="algolib",
+                platform="railway",
+                source="pytest",
+                url=url,
+                token="test-token",
+                level="debug",
+            )
+            handler = algolog.attach_logging(logger, level=logging.WARNING)
+            try:
+                logging.getLogger("test.attach").warning("boom %s", "now")
+                self.assertTrue(logger.flush())
+                (event,) = capture.wait()["body"]["events"]
+            finally:
+                logging.getLogger().removeHandler(handler)
+                logger.shutdown()
+
+        self.assertEqual(event["event"], "log.warn")
+        self.assertEqual(event["level"], "warn")
+        self.assertEqual(event["msg"], "boom now")
+        self.assertEqual(event["data"]["logger"], "test.attach")
 
 
 class QueueTests(unittest.TestCase):
